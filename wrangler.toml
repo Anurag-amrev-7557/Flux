@@ -1,0 +1,4 @@
+name = "flux"
+compatibility_date = "2026-03-10"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".open-next/assets"

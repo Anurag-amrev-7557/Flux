@@ -1,0 +1,11 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/debts/page": "/debts",
+  "/favicon.ico/route": "/favicon.ico",
+  "/log-expense/route": "/log-expense",
+  "/page": "/",
+  "/profiles/page": "/profiles",
+  "/reports/page": "/reports",
+  "/settings/page": "/settings"
+}
