@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme {
+    --color-primary: #0f172a;
+    --color-background-light: #f8f7f6;
+
+    --font-display: "Manrope", sans-serif;
+
+    --radius-DEFAULT: 0.5rem;
+    --radius-lg: 1rem;
+    --radius-xl: 1.5rem;
+    --radius-full: 9999px;
+}
+
+@layer base {
+    body {
+        @apply bg-background-light font-display text-slate-900 flex flex-col;
+        min-height: max(884px, 100dvh);
+    }
+}
+
+@layer utilities {
+    .glass-card {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+}
