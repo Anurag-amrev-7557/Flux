@@ -1,0 +1,25 @@
+name = "flux"
+compatibility_date = "2026-03-10"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "out"
+
+# ═══════════════════════════════════════════════════════════════════════
+# ENVIRONMENT VARIABLE CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════
+#
+# IMPORTANT: Configure these in Cloudflare Pages Dashboard only!
+# DO NOT add values below - use the Pages Settings > Environment Variables
+#
+# Required secrets/variables:
+# - GROQ_API_KEY (SECRET): Your Groq API key from https://console.groq.com
+# - NEXT_PUBLIC_SUPABASE_URL: Your Supabase project URL (if applicable)
+# - NEXT_PUBLIC_SUPABASE_ANON_KEY: Your Supabase anon key (if applicable)
+# - NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: Your Supabase publishable key (if applicable)
+#
+# See GROQ_DEPLOYMENT_GUIDE.md for setup instructions
+#
+[env.production]
+# Production environment variables configured in Pages dashboard
+
+[env.preview]
+# Preview/staging environment variables configured in Pages dashboard

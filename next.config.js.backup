@@ -1,0 +1,26 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+    reactStrictMode: true,
+    experimental: {
+        reactCompiler: false,
+    },
+    turbopack: {},
+    output: 'export',
+    images: {
+        unoptimized: true,
+    },
+    trailingSlash: true,
+    skipTrailingSlashRedirect: true,
+};
+
+if (process.env.ENABLE_PWA === 'true') {
+    const withSerwist = require("@serwist/next").default({
+        swSrc: "src/app/sw.ts",
+        swDest: "public/sw.js",
+        disable: false,
+    });
+    module.exports = withSerwist(nextConfig);
+} else {
+    module.exports = nextConfig;
+}
