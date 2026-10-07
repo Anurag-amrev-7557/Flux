@@ -1,7 +1,8 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { ReactNode } from "react";
+import { ReactNode, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { LoadingIndicator } from "./LoadingIndicator";
 import clsx from "clsx";
 import { triggerHaptic } from "@/utils/haptics";
@@ -33,6 +34,11 @@ export function ActionModal({
     onConfirm,
     isConfirmLoading = false,
 }: ActionModalProps) {
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
     const isDanger = confirmVariant === "danger";
     const defaultIcon = icon || (isDanger ? "delete" : title.toLowerCase().includes("cannot") ? "warning" : "edit_note");
 
@@ -41,7 +47,7 @@ export function ActionModal({
         onClose();
     };
 
-    return (
+    const modalContent = (
         <AnimatePresence>
             {isOpen && (
                 <>
@@ -161,4 +167,7 @@ export function ActionModal({
             )}
         </AnimatePresence>
     );
+
+    if (!mounted) return null;
+    return createPortal(modalContent, document.body);
 }

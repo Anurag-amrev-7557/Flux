@@ -3,6 +3,7 @@
 import { useAppStore } from "@/store/appStore";
 import { useDatabase } from "@/db/DatabaseProvider";
 import { useEffect, useState, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { DebtDocType, DebtPaymentDocType } from "@/db/schema";
 import clsx from 'clsx';
 import { useI18n } from "@/hooks/useI18n";
@@ -15,7 +16,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { triggerHaptic } from "@/utils/haptics";
 import { evaluateMathExpression } from "@/utils/mathEval";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue, useTransform, animate, PanInfo } from "framer-motion";
 import { getAvatarStyle } from "@/utils/avatar";
 
 const DEBT_TICKER_PROMPTS = [
@@ -399,6 +400,519 @@ function getDebtDateSections(items: DebtDocType[]): DebtDateSection[] {
     return [...sections.values()];
 }
 
+const ACTION_PANEL_WIDTH = 104;
+
+function SwipeableDebtItem({
+    debt,
+    paid,
+    isSwiped,
+    isPrivacyMode,
+    currencySymbol,
+    onSwipe,
+    onReset,
+    onResetOthers,
+    onEdit,
+    onDelete,
+    onPayment,
+    onToggleStatus,
+}: {
+    debt: DebtDocType;
+    paid: number;
+    isSwiped: boolean;
+    isPrivacyMode: boolean;
+    currencySymbol: string;
+    onSwipe: (id: string) => void;
+    onReset: () => void;
+    onResetOthers: () => void;
+    onEdit: (id: string) => void;
+    onDelete: (debt: DebtDocType) => void;
+    onPayment: (debt: DebtDocType, remaining: number) => void;
+    onToggleStatus: (debt: DebtDocType) => void;
+}) {
+    const { t } = useI18n();
+    const x = useMotionValue(0);
+
+    useEffect(() => {
+        animate(x, isSwiped ? -ACTION_PANEL_WIDTH : 0, {
+            type: "spring",
+            stiffness: 460,
+            damping: 36,
+        });
+    }, [isSwiped, x]);
+
+    const editOpacity = useTransform(x, [-12, -72], [0, 1]);
+    const editScale = useTransform(x, [-12, -88], [0.82, 1]);
+
+    const deleteOpacity = useTransform(x, [-24, -96], [0, 1]);
+    const deleteScale = useTransform(x, [-24, -104], [0.82, 1]);
+
+    const isLent = debt.type === 'lent';
+    const isSettled = debt.status === 'settled';
+    const isOverdue = debt.status === 'active' && Boolean(debt.due_date && debt.due_date < Date.now());
+    const directionLabel = isLent ? 'They owe you' : 'You owe them';
+
+    const remaining = Math.max(0, debt.amount - paid);
+    const percentPaid = debt.amount > 0 ? Math.min(100, Math.round((paid / debt.amount) * 100)) : 0;
+    const displayAmount = (paid > 0 && !isSettled) ? remaining : debt.amount;
+    const formattedAmount = Number.isInteger(displayAmount) ? displayAmount.toLocaleString() : displayAmount.toFixed(2);
+
+    const handleDragEnd = (_e: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+        const currentX = x.get();
+        const velocityX = info.velocity.x;
+
+        let shouldOpen = false;
+        if (velocityX < -200) {
+            shouldOpen = true;
+        } else if (velocityX > 200) {
+            shouldOpen = false;
+        } else {
+            shouldOpen = currentX < -ACTION_PANEL_WIDTH / 2;
+        }
+
+        if (shouldOpen) {
+            onSwipe(debt.id);
+            triggerHaptic('light');
+            animate(x, -ACTION_PANEL_WIDTH, {
+                type: "spring",
+                stiffness: 460,
+                damping: 36,
+            });
+        } else {
+            onReset();
+            animate(x, 0, {
+                type: "spring",
+                stiffness: 460,
+                damping: 36,
+            });
+        }
+    };
+
+    return (
+        <div
+            data-swipe-debt={debt.id}
+            className="relative overflow-hidden rounded-xl my-0.5 group bg-slate-100/50 dark:bg-white/[0.02]"
+        >
+            <motion.div
+                drag="x"
+                dragDirectionLock
+                dragMomentum={false}
+                dragConstraints={{ left: -ACTION_PANEL_WIDTH, right: 0 }}
+                dragElastic={0.12}
+                style={{ x }}
+                onDragStart={() => {
+                    onResetOthers();
+                }}
+                onDragEnd={handleDragEnd}
+                onClick={() => {
+                    if (isSwiped) {
+                        onReset();
+                        triggerHaptic('light');
+                    } else {
+                        triggerHaptic('light');
+                        onEdit(debt.id);
+                    }
+                }}
+                className="flex items-center w-full touch-pan-y select-none cursor-pointer"
+            >
+                {/* 1. Debt Entry Content (100% width shrink-0) */}
+                <div className="w-full shrink-0 bg-slate-50 dark:bg-[#141414] hover:bg-slate-100/70 dark:hover:bg-white/[0.04] active:bg-slate-200/50 dark:active:bg-white/[0.08] flex flex-col py-2.5 px-2 rounded-xl transition-colors">
+                    <div className="flex items-center gap-3.5 w-full">
+                        {/* Circular Avatar */}
+                        <div className={clsx(
+                            "w-11 h-11 rounded-full flex items-center justify-center shrink-0 transition-transform group-hover:scale-105",
+                            isSettled
+                                ? "bg-slate-200/80 dark:bg-white/10 text-slate-500 dark:text-[#C4C7C5]"
+                                : isLent
+                                ? "bg-emerald-500/15 text-emerald-600 dark:text-[#6DD58C]"
+                                : "bg-rose-500/15 text-rose-600 dark:text-[#F2B8B5]"
+                        )}>
+                            <span className="material-symbols-outlined text-[20px]">
+                                {isSettled ? 'check' : isLent ? 'arrow_downward' : 'arrow_upward'}
+                            </span>
+                        </div>
+
+                        {/* Title and Subtitle Info */}
+                        <div className="flex-1 min-w-0">
+                            <p className={clsx(
+                                "text-[15.5px] sm:text-[16px] font-normal truncate leading-tight",
+                                isSettled ? "text-slate-400 dark:text-zinc-500 line-through" : "text-slate-900 dark:text-[#E3E3E3]"
+                            )}>
+                                {debt.purpose || t('purpose')}
+                            </p>
+                            <p className="text-[13px] sm:text-[13.5px] font-normal text-slate-500 dark:text-[#C4C7C5] truncate mt-1 leading-normal">
+                                <span>{directionLabel}</span>
+                                {debt.due_date && (
+                                    <span className={clsx(isOverdue && "text-rose-600 dark:text-[#F2B8B5] font-medium")}>
+                                        {` • `}{isOverdue ? 'Overdue' : `Due ${new Date(debt.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
+                                    </span>
+                                )}
+                            </p>
+                        </div>
+
+                        {/* Amount & Inline Quick Actions */}
+                        <div className="flex items-center gap-2 shrink-0">
+                            <div className="text-right">
+                                <p
+                                    title={formatFullCurrency(isLent ? displayAmount : -displayAmount, currencySymbol, true)}
+                                    className={clsx(
+                                        "text-[16px] sm:text-[17px] font-normal tabular-nums whitespace-nowrap privacy-mask",
+                                        isPrivacyMode && "privacy-blur",
+                                        isSettled
+                                            ? "text-slate-400 dark:text-[#C4C7C5] line-through"
+                                            : isLent
+                                            ? "text-emerald-600 dark:text-[#6DD58C]"
+                                            : "text-rose-600 dark:text-[#F2B8B5]"
+                                    )}
+                                >
+                                    {isSettled
+                                        ? `${currencySymbol}${formattedAmount}`
+                                        : isLent
+                                        ? `+ ${currencySymbol}${formattedAmount}`
+                                        : `- ${currencySymbol}${formattedAmount}`
+                                    }
+                                </p>
+                                {paid > 0 && !isSettled && (
+                                    <span className={clsx("text-[11px] font-normal text-slate-500 dark:text-[#C4C7C5] block tabular-nums privacy-mask", isPrivacyMode && "privacy-blur")}>
+                                        of {currencySymbol}{Number.isInteger(debt.amount) ? debt.amount.toLocaleString() : debt.amount.toFixed(2)}
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Inline Quick Actions (Partial Payment & Settle) */}
+                            <div className="flex items-center gap-0.5 shrink-0">
+                                {!isSettled && (
+                                    <button
+                                        type="button"
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            triggerHaptic('light');
+                                            onPayment(debt, remaining);
+                                        }}
+                                        className="w-8 h-8 rounded-full flex items-center justify-center text-sky-600 dark:text-[#78D9EC] hover:bg-sky-500/15 active:scale-90 transition-all cursor-pointer"
+                                        title="Record Partial Payment"
+                                        aria-label="Record Partial Payment"
+                                    >
+                                        <span className="material-symbols-outlined text-[17px]">payments</span>
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onToggleStatus(debt);
+                                    }}
+                                    className={clsx(
+                                        "w-8 h-8 rounded-full flex items-center justify-center transition-all active:scale-90 cursor-pointer",
+                                        isSettled
+                                            ? "text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/10"
+                                            : "text-emerald-600 dark:text-[#6DD58C] hover:bg-emerald-500/15"
+                                    )}
+                                    title={isSettled ? "Reactivate Debt" : "Mark as Settled"}
+                                    aria-label={isSettled ? "Reactivate Debt" : "Mark as Settled"}
+                                >
+                                    <span className="material-symbols-outlined text-[17px]">{isSettled ? 'undo' : 'check'}</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Partial Repayment Progress Bar */}
+                    {paid > 0 && !isSettled && (
+                        <div className="w-full pt-2 mt-1 border-t border-slate-200/60 dark:border-white/5">
+                            <div className="flex items-center justify-between text-[11px] font-normal text-slate-500 dark:text-[#C4C7C5] mb-1">
+                                <span className={clsx("privacy-mask", isPrivacyMode && "privacy-blur")}>Paid: {formatCompactCurrency(paid, currencySymbol, 1000)} ({percentPaid}%)</span>
+                                <span className={clsx("privacy-mask", isPrivacyMode && "privacy-blur")}>Left: {formatCompactCurrency(remaining, currencySymbol, 1000)}</span>
+                            </div>
+                            <div className="w-full h-1 bg-slate-200/80 dark:bg-white/10 rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-emerald-500 dark:bg-[#6DD58C] rounded-full transition-all duration-300"
+                                    style={{ width: `${percentPaid}%` }}
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* 2. Slide-to-Action Buttons */}
+                <div className="w-[104px] shrink-0 flex items-center justify-center gap-2 pl-2 pr-3 select-none">
+                    <motion.button
+                        type="button"
+                        style={{
+                            opacity: editOpacity,
+                            scale: editScale,
+                        }}
+                        whileTap={{ scale: 0.92 }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            triggerHaptic('light');
+                            onEdit(debt.id);
+                            onReset();
+                        }}
+                        className="w-[38px] h-[38px] rounded-full bg-slate-200/80 hover:bg-slate-300/80 active:bg-slate-300 text-slate-700 dark:bg-white/[0.08] dark:hover:bg-white/[0.14] dark:active:bg-white/[0.18] dark:text-zinc-200 border border-slate-300/50 dark:border-white/10 flex items-center justify-center shadow-2xs cursor-pointer transition-colors"
+                        title="Edit"
+                        aria-label="Edit debt"
+                    >
+                        <span className="material-symbols-outlined text-[18px]">edit</span>
+                    </motion.button>
+
+                    <motion.button
+                        type="button"
+                        style={{
+                            opacity: deleteOpacity,
+                            scale: deleteScale,
+                        }}
+                        whileTap={{ scale: 0.92 }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            triggerHaptic('medium');
+                            onDelete(debt);
+                            onReset();
+                        }}
+                        className="w-[38px] h-[38px] rounded-full bg-rose-500/10 hover:bg-rose-500/18 active:bg-rose-500/25 text-rose-600 dark:bg-rose-500/[0.12] dark:hover:bg-rose-500/[0.22] dark:active:bg-rose-500/[0.28] dark:text-rose-400 border border-rose-500/20 flex items-center justify-center shadow-2xs cursor-pointer transition-colors"
+                        title="Delete"
+                        aria-label="Delete debt"
+                    >
+                        <span className="material-symbols-outlined text-[18px]">delete</span>
+                    </motion.button>
+                </div>
+            </motion.div>
+        </div>
+    );
+}
+
+function SwipeableDebtGroupItem({
+    group,
+    isExpanded,
+    isSwiped,
+    isPrivacyMode,
+    currencySymbol,
+    onToggleExpand,
+    onSwipe,
+    onReset,
+    onResetOthers,
+    onAdd,
+    onEdit,
+    onDelete,
+}: {
+    group: {
+        personName: string;
+        totalLent: number;
+        totalOwe: number;
+        activeCount: number;
+        settledCount: number;
+        items: DebtDocType[];
+    };
+    isExpanded: boolean;
+    isSwiped: boolean;
+    isPrivacyMode: boolean;
+    currencySymbol: string;
+    onToggleExpand: () => void;
+    onSwipe: (personName: string) => void;
+    onReset: () => void;
+    onResetOthers: () => void;
+    onAdd: () => void;
+    onEdit: (id: string) => void;
+    onDelete: () => void;
+}) {
+    const x = useMotionValue(0);
+
+    useEffect(() => {
+        animate(x, isSwiped ? -ACTION_PANEL_WIDTH : 0, {
+            type: "spring",
+            stiffness: 460,
+            damping: 36,
+        });
+    }, [isSwiped, x]);
+
+    const editOpacity = useTransform(x, [-12, -72], [0, 1]);
+    const editScale = useTransform(x, [-12, -88], [0.82, 1]);
+
+    const deleteOpacity = useTransform(x, [-24, -96], [0, 1]);
+    const deleteScale = useTransform(x, [-24, -104], [0.82, 1]);
+
+    const personNet = group.totalLent - group.totalOwe;
+    const isOwed = personNet > 0;
+    const isOwing = personNet < 0;
+    const isAllSettled = group.activeCount === 0;
+
+    const recordSubtitle = group.activeCount > 0
+        ? `${group.activeCount} ${group.activeCount === 1 ? 'record' : 'records'}`
+        : `${group.settledCount} settled`;
+
+    const avatarStyle = getAvatarStyle(group.personName);
+
+    const handleDragEnd = (_e: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+        const currentX = x.get();
+        const velocityX = info.velocity.x;
+
+        let shouldOpen = false;
+        if (velocityX < -200) {
+            shouldOpen = true;
+        } else if (velocityX > 200) {
+            shouldOpen = false;
+        } else {
+            shouldOpen = currentX < -ACTION_PANEL_WIDTH / 2;
+        }
+
+        if (shouldOpen) {
+            onSwipe(group.personName);
+            triggerHaptic('light');
+            animate(x, -ACTION_PANEL_WIDTH, {
+                type: "spring",
+                stiffness: 460,
+                damping: 36,
+            });
+        } else {
+            onReset();
+            animate(x, 0, {
+                type: "spring",
+                stiffness: 460,
+                damping: 36,
+            });
+        }
+    };
+
+    return (
+        <div
+            data-swipe-person={group.personName}
+            className="relative overflow-hidden rounded-xl my-0.5 group bg-slate-100/50 dark:bg-white/[0.02]"
+        >
+            <motion.div
+                drag="x"
+                dragDirectionLock
+                dragMomentum={false}
+                dragConstraints={{ left: -ACTION_PANEL_WIDTH, right: 0 }}
+                dragElastic={0.12}
+                style={{ x }}
+                onDragStart={() => {
+                    onResetOthers();
+                }}
+                onDragEnd={handleDragEnd}
+                onClick={() => {
+                    if (isSwiped) {
+                        onReset();
+                        triggerHaptic('light');
+                    } else {
+                        triggerHaptic('light');
+                        onToggleExpand();
+                    }
+                }}
+                className="flex items-center w-full touch-pan-y select-none cursor-pointer"
+            >
+                {/* 1. Person Row (100% width shrink-0) */}
+                <div className="w-full shrink-0 bg-slate-50 dark:bg-[#141414] flex items-center gap-4 py-3 px-1.5 hover:bg-slate-100/70 dark:hover:bg-white/[0.04] active:bg-slate-200/50 dark:active:bg-white/[0.08] transition-colors rounded-xl">
+                    {/* Avatar */}
+                    <div
+                        className="w-11 h-11 rounded-full flex items-center justify-center shrink-0 transition-transform group-hover:scale-105"
+                        style={{
+                            backgroundColor: avatarStyle.bg,
+                            color: avatarStyle.text,
+                        }}
+                    >
+                        <span className="text-[20px] font-normal leading-none select-none">
+                            {group.personName.trim().charAt(0).toUpperCase()}
+                        </span>
+                    </div>
+
+                    {/* Name & Subtitle Info */}
+                    <div className="flex-1 min-w-0">
+                        <p className="text-[15.5px] sm:text-[16px] font-normal text-slate-900 dark:text-[#E3E3E3] truncate leading-tight">
+                            {group.personName}
+                        </p>
+                        <p className="text-[13px] sm:text-[13.5px] font-normal text-slate-500 dark:text-[#C4C7C5] truncate mt-1 leading-normal">
+                            {recordSubtitle} • {isOwed ? "Owes you" : isOwing ? "You owe" : "All settled"}
+                        </p>
+                    </div>
+
+                    {/* Net Amount & Chevron */}
+                    <div className="flex items-center gap-2.5 text-right shrink-0">
+                        <p
+                            title={formatFullCurrency(personNet, currencySymbol, true)}
+                            className={clsx(
+                                "text-[16px] sm:text-[17px] font-normal tabular-nums whitespace-nowrap privacy-mask",
+                                isPrivacyMode && "privacy-blur",
+                                isAllSettled
+                                    ? "text-slate-500 dark:text-[#C4C7C5]"
+                                    : isOwed
+                                    ? "text-emerald-600 dark:text-[#6DD58C]"
+                                    : "text-rose-600 dark:text-[#F2B8B5]"
+                            )}
+                        >
+                            {isAllSettled
+                                ? "Settled"
+                                : isOwed
+                                ? `+ ${currencySymbol}${formatCompactCurrency(Math.abs(personNet), currencySymbol, 1000).replace(currencySymbol, '')}`
+                                : `- ${currencySymbol}${formatCompactCurrency(Math.abs(personNet), currencySymbol, 1000).replace(currencySymbol, '')}`
+                            }
+                        </p>
+                        <span className={clsx(
+                            "material-symbols-outlined text-[20px] text-slate-400 dark:text-[#C4C7C5] transition-transform duration-200",
+                            isExpanded && "rotate-180"
+                        )}>
+                            expand_more
+                        </span>
+                    </div>
+                </div>
+
+                {/* 2. Slide-to-Action Buttons */}
+                <div className="w-[104px] shrink-0 flex items-center justify-center gap-2 pl-2 pr-3 select-none">
+                    <motion.button
+                        type="button"
+                        style={{
+                            opacity: editOpacity,
+                            scale: editScale,
+                        }}
+                        whileTap={{ scale: 0.92 }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            triggerHaptic('light');
+                            if (group.items.length === 1) {
+                                onEdit(group.items[0].id);
+                            } else {
+                                onAdd();
+                            }
+                            onReset();
+                        }}
+                        className="w-[38px] h-[38px] rounded-full bg-slate-200/80 hover:bg-slate-300/80 active:bg-slate-300 text-slate-700 dark:bg-white/[0.08] dark:hover:bg-white/[0.14] dark:active:bg-white/[0.18] dark:text-zinc-200 border border-slate-300/50 dark:border-white/10 flex items-center justify-center shadow-2xs cursor-pointer transition-colors"
+                        title={group.items.length === 1 ? "Edit debt" : "Add debt"}
+                        aria-label={group.items.length === 1 ? "Edit debt" : "Add debt"}
+                    >
+                        <span className="material-symbols-outlined text-[18px]">
+                            {group.items.length === 1 ? 'edit' : 'add'}
+                        </span>
+                    </motion.button>
+
+                    <motion.button
+                        type="button"
+                        style={{
+                            opacity: deleteOpacity,
+                            scale: deleteScale,
+                        }}
+                        whileTap={{ scale: 0.92 }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            triggerHaptic('medium');
+                            onDelete();
+                            onReset();
+                        }}
+                        className="w-[38px] h-[38px] rounded-full bg-rose-500/10 hover:bg-rose-500/18 active:bg-rose-500/25 text-rose-600 dark:bg-rose-500/[0.12] dark:hover:bg-rose-500/[0.22] dark:active:bg-rose-500/[0.28] dark:text-rose-400 border border-rose-500/20 flex items-center justify-center shadow-2xs cursor-pointer transition-colors"
+                        title="Delete"
+                        aria-label="Delete debts"
+                    >
+                        <span className="material-symbols-outlined text-[18px]">delete</span>
+                    </motion.button>
+                </div>
+            </motion.div>
+        </div>
+    );
+}
+
 export default function DebtsPage() {
     const router = useRouter();
     const { activeProfileId, showToast, currency, setIsSplitBillOpen, isPrivacyMode, togglePrivacyMode, user } = useAppStore();
@@ -423,10 +937,33 @@ export default function DebtsPage() {
     const [addModalInitialType, setAddModalInitialType] = useState<"lent" | "owe">("lent");
     const [addModalInitialPurpose, setAddModalInitialPurpose] = useState<string>("");
     const [addModalInitialPersonName, setAddModalInitialPersonName] = useState<string>("");
-    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-    const [debtToDeleteId, setDebtToDeleteId] = useState<string | null>(null);
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => { setMounted(true); }, []);
+
+    const [swipedDebtId, setSwipedDebtId] = useState<string | null>(null);
+    const [swipedPerson, setSwipedPerson] = useState<string | null>(null);
+    const [deleteConfirmDebt, setDeleteConfirmDebt] = useState<DebtDocType | null>(null);
+    const [deleteConfirmGroup, setDeleteConfirmGroup] = useState<{ personName: string; count: number } | null>(null);
     const [expandedPerson, setExpandedPerson] = useState<string | null>(null);
     const [settledHistoryPerson, setSettledHistoryPerson] = useState<string | null>(null);
+
+    // Close swiped items when tapping outside
+    useEffect(() => {
+        if (!swipedDebtId && !swipedPerson) return;
+        const handleOutsidePointerDown = (e: PointerEvent) => {
+            const target = e.target as HTMLElement | null;
+            if (
+                (swipedDebtId && target?.closest(`[data-swipe-debt="${swipedDebtId}"]`)) ||
+                (swipedPerson && target?.closest(`[data-swipe-person="${swipedPerson}"]`))
+            ) {
+                return;
+            }
+            setSwipedDebtId(null);
+            setSwipedPerson(null);
+        };
+        window.addEventListener('pointerdown', handleOutsidePointerDown);
+        return () => window.removeEventListener('pointerdown', handleOutsidePointerDown);
+    }, [swipedDebtId, swipedPerson]);
 
     // Partial Repayment Modal State
     const [paymentModalDebt, setPaymentModalDebt] = useState<DebtDocType | null>(null);
@@ -615,26 +1152,46 @@ export default function DebtsPage() {
         }
     };
 
-    const handleDelete = (id: string) => {
-        setDebtToDeleteId(id);
-        setIsDeleteModalOpen(true);
-    };
-
-    const confirmDelete = async () => {
-        if (!debtToDeleteId) return;
+    const confirmDeleteSingleDebt = async () => {
+        if (!deleteConfirmDebt) return;
         try {
             triggerHaptic('medium');
             const relatedPayments = await db.debt_payments.find({
-                selector: { debt_id: debtToDeleteId, _deleted: false }
+                selector: { debt_id: deleteConfirmDebt.id, _deleted: false }
             }).exec();
             await Promise.all(relatedPayments.map(p => softDelete(db.debt_payments, p.id)));
-            await softDelete(db.debts, debtToDeleteId);
+            await softDelete(db.debts, deleteConfirmDebt.id);
             showToast("Debt record deleted", "info");
-            setIsDeleteModalOpen(false);
-            setDebtToDeleteId(null);
+            setDeleteConfirmDebt(null);
+            setSwipedDebtId(null);
         } catch (error) {
             console.error("Failed to delete debt", error);
             showToast("Failed to delete debt", "error");
+        }
+    };
+
+    const confirmDeleteGroup = async () => {
+        if (!deleteConfirmGroup) return;
+        try {
+            triggerHaptic('medium');
+            const personKey = deleteConfirmGroup.personName.trim().toLowerCase();
+            const groupDebts = debts.filter(d => d.person_name.trim().toLowerCase() === personKey);
+            for (const debt of groupDebts) {
+                const relatedPayments = await db.debt_payments.find({
+                    selector: { debt_id: debt.id, _deleted: false }
+                }).exec();
+                await Promise.all(relatedPayments.map(p => softDelete(db.debt_payments, p.id)));
+                await softDelete(db.debts, debt.id);
+            }
+            showToast(`Deleted all records for ${deleteConfirmGroup.personName}`, "info");
+            setDeleteConfirmGroup(null);
+            setSwipedPerson(null);
+            if (expandedPerson === deleteConfirmGroup.personName) {
+                setExpandedPerson(null);
+            }
+        } catch (error) {
+            console.error("Failed to delete person debts", error);
+            showToast("Failed to delete debts", "error");
         }
     };
 
@@ -716,148 +1273,6 @@ export default function DebtsPage() {
 
     const toggleSettledHistory = (personName: string) => {
         setSettledHistoryPerson(settledHistoryPerson === personName ? null : personName);
-    };
-
-    const renderDebtItem = (debt: DebtDocType) => {
-        const isLent = debt.type === 'lent';
-        const isSettled = debt.status === 'settled';
-        const isOverdue = debt.status === 'active' && Boolean(debt.due_date && debt.due_date < Date.now());
-        const directionLabel = isLent ? 'They owe you' : 'You owe them';
-
-        const paid = debtPaymentsMap[debt.id]?.totalPaid || 0;
-        const remaining = Math.max(0, debt.amount - paid);
-        const percentPaid = debt.amount > 0 ? Math.min(100, Math.round((paid / debt.amount) * 100)) : 0;
-        const displayAmount = (paid > 0 && !isSettled) ? remaining : debt.amount;
-        const formattedAmount = Number.isInteger(displayAmount) ? displayAmount.toLocaleString() : displayAmount.toFixed(2);
-
-        return (
-            <div
-                key={debt.id}
-                onClick={() => openEditModal(debt.id)}
-                className="group relative z-10 bg-slate-50 dark:bg-[#141414] hover:bg-slate-100/70 dark:hover:bg-white/[0.04] active:bg-slate-200/50 dark:active:bg-white/[0.08] flex flex-col py-2.5 px-2 rounded-xl transition-colors cursor-pointer select-none"
-            >
-                <div className="flex items-center gap-3.5 w-full">
-                    {/* Circular Avatar matching Homepage Transactions */}
-                    <div className={clsx(
-                        "w-11 h-11 rounded-full flex items-center justify-center shrink-0 transition-transform group-hover:scale-105",
-                        isSettled
-                            ? "bg-slate-200/80 dark:bg-white/10 text-slate-500 dark:text-[#C4C7C5]"
-                            : isLent
-                            ? "bg-emerald-500/15 text-emerald-600 dark:text-[#6DD58C]"
-                            : "bg-rose-500/15 text-rose-600 dark:text-[#F2B8B5]"
-                    )}>
-                        <span className="material-symbols-outlined text-[20px]">
-                            {isSettled ? 'check' : isLent ? 'arrow_downward' : 'arrow_upward'}
-                        </span>
-                    </div>
-
-                    {/* Title and Subtitle Info */}
-                    <div className="flex-1 min-w-0">
-                        <p className={clsx(
-                            "text-[15.5px] sm:text-[16px] font-normal truncate leading-tight",
-                            isSettled ? "text-slate-400 dark:text-zinc-500 line-through" : "text-slate-900 dark:text-[#E3E3E3]"
-                        )}>
-                            {debt.purpose || t('purpose')}
-                        </p>
-                        <p className="text-[13px] sm:text-[13.5px] font-normal text-slate-500 dark:text-[#C4C7C5] truncate mt-1 leading-normal">
-                            <span>{directionLabel}</span>
-                            {debt.due_date && (
-                                <span className={clsx(isOverdue && "text-rose-600 dark:text-[#F2B8B5] font-medium")}>
-                                    {` • `}{isOverdue ? 'Overdue' : `Due ${new Date(debt.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
-                                </span>
-                            )}
-                        </p>
-                    </div>
-
-                    {/* Amount & Actions */}
-                    <div className="flex items-center gap-2 shrink-0">
-                        <div className="text-right">
-                            <p
-                                title={formatFullCurrency(isLent ? displayAmount : -displayAmount, currencySymbol, true)}
-                                className={clsx(
-                                    "text-[16px] sm:text-[17px] font-normal tabular-nums whitespace-nowrap privacy-mask",
-                                    isPrivacyMode && "privacy-blur",
-                                    isSettled
-                                        ? "text-slate-400 dark:text-[#C4C7C5] line-through"
-                                        : isLent
-                                        ? "text-emerald-600 dark:text-[#6DD58C]"
-                                        : "text-rose-600 dark:text-[#F2B8B5]"
-                                )}
-                            >
-                                {isSettled
-                                    ? `${currencySymbol}${formattedAmount}`
-                                    : isLent
-                                    ? `+ ${currencySymbol}${formattedAmount}`
-                                    : `- ${currencySymbol}${formattedAmount}`
-                                }
-                            </p>
-                            {paid > 0 && !isSettled && (
-                                <span className={clsx("text-[11px] font-normal text-slate-500 dark:text-[#C4C7C5] block tabular-nums privacy-mask", isPrivacyMode && "privacy-blur")}>
-                                    of {currencySymbol}{Number.isInteger(debt.amount) ? debt.amount.toLocaleString() : debt.amount.toFixed(2)}
-                                </span>
-                            )}
-                        </div>
-
-                        {/* Inline Actions */}
-                        <div className="flex items-center gap-0.5 shrink-0">
-                            {!isSettled && (
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        triggerHaptic('light');
-                                        setPaymentModalDebt(debt);
-                                        setPaymentAmount(remaining.toString());
-                                        setPaymentNote("");
-                                    }}
-                                    className="w-8 h-8 rounded-full flex items-center justify-center text-sky-600 dark:text-[#78D9EC] hover:bg-sky-500/15 active:scale-90 transition-all cursor-pointer"
-                                    title="Record Partial Payment"
-                                    aria-label="Record Partial Payment"
-                                >
-                                    <span className="material-symbols-outlined text-[17px]">payments</span>
-                                </button>
-                            )}
-                            <button
-                                onClick={(e) => { e.stopPropagation(); handleToggleStatus(debt); }}
-                                className={clsx(
-                                    "w-8 h-8 rounded-full flex items-center justify-center transition-all active:scale-90 cursor-pointer",
-                                    isSettled
-                                        ? "text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/10"
-                                        : "text-emerald-600 dark:text-[#6DD58C] hover:bg-emerald-500/15"
-                                )}
-                                title={isSettled ? "Reactivate Debt" : "Mark as Settled"}
-                                aria-label={isSettled ? "Reactivate Debt" : "Mark as Settled"}
-                            >
-                                <span className="material-symbols-outlined text-[17px]">{isSettled ? 'undo' : 'check'}</span>
-                            </button>
-                            <button
-                                onClick={(e) => { e.stopPropagation(); handleDelete(debt.id); }}
-                                className="w-8 h-8 rounded-full text-slate-400 hover:text-rose-600 dark:text-zinc-500 dark:hover:text-[#F2B8B5] hover:bg-rose-500/10 flex items-center justify-center transition-all active:scale-90 cursor-pointer"
-                                title="Delete Debt"
-                                aria-label="Delete Debt"
-                            >
-                                <span className="material-symbols-outlined text-[17px]">delete</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Partial Repayment Progress Bar */}
-                {paid > 0 && !isSettled && (
-                    <div className="w-full pt-2 mt-1 border-t border-slate-200/60 dark:border-white/5">
-                        <div className="flex items-center justify-between text-[11px] font-normal text-slate-500 dark:text-[#C4C7C5] mb-1">
-                            <span className={clsx("privacy-mask", isPrivacyMode && "privacy-blur")}>Paid: {formatCompactCurrency(paid, currencySymbol, 1000)} ({percentPaid}%)</span>
-                            <span className={clsx("privacy-mask", isPrivacyMode && "privacy-blur")}>Left: {formatCompactCurrency(remaining, currencySymbol, 1000)}</span>
-                        </div>
-                        <div className="w-full h-1 bg-slate-200/80 dark:bg-white/10 rounded-full overflow-hidden">
-                            <div
-                                className="h-full bg-emerald-500 dark:bg-[#6DD58C] rounded-full transition-all duration-300"
-                                style={{ width: `${percentPaid}%` }}
-                            />
-                        </div>
-                    </div>
-                )}
-            </div>
-        );
     };
 
     return (
@@ -1244,79 +1659,51 @@ export default function DebtsPage() {
                     <div className="space-y-1 w-full">
                         {groupedDebts.map((group) => {
                             const isExpanded = expandedPerson === group.personName;
-                            const personNet = group.totalLent - group.totalOwe;
-                            const isOwed = personNet > 0;
-                            const isOwing = personNet < 0;
-                            const isAllSettled = group.activeCount === 0;
-
-                            const recordSubtitle = group.activeCount > 0
-                                ? `${group.activeCount} ${group.activeCount === 1 ? 'record' : 'records'}`
-                                : `${group.settledCount} settled`;
-
-                            const avatarStyle = getAvatarStyle(group.personName);
 
                             return (
                                 <div
                                     key={group.personName}
                                     className="transition-colors overflow-hidden"
                                 >
-                                    {/* Person Row (matching Homepage Recent Transactions) */}
-                                    <div
-                                        onClick={() => toggleExpand(group.personName)}
-                                        className="group relative z-10 bg-slate-50 dark:bg-[#141414] flex items-center gap-4 py-3 px-1.5 hover:bg-slate-100/70 dark:hover:bg-white/[0.04] active:bg-slate-200/50 dark:active:bg-white/[0.08] transition-colors cursor-pointer select-none rounded-xl"
-                                    >
-                                        {/* Avatar (matching Homepage Avatars) */}
-                                        <div
-                                            className="w-11 h-11 rounded-full flex items-center justify-center shrink-0 transition-transform group-hover:scale-105"
-                                            style={{
-                                                backgroundColor: avatarStyle.bg,
-                                                color: avatarStyle.text,
-                                            }}
-                                        >
-                                            <span className="text-[20px] font-normal leading-none select-none">
-                                                {group.personName.trim().charAt(0).toUpperCase()}
-                                            </span>
-                                        </div>
-
-                                        {/* Name & Subtitle Info */}
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-[15.5px] sm:text-[16px] font-normal text-slate-900 dark:text-[#E3E3E3] truncate leading-tight">
-                                                {group.personName}
-                                            </p>
-                                            <p className="text-[13px] sm:text-[13.5px] font-normal text-slate-500 dark:text-[#C4C7C5] truncate mt-1 leading-normal">
-                                                {recordSubtitle} • {isOwed ? "Owes you" : isOwing ? "You owe" : "All settled"}
-                                            </p>
-                                        </div>
-
-                                        {/* Net Amount & Chevron */}
-                                        <div className="flex items-center gap-2.5 text-right shrink-0">
-                                            <p
-                                                title={formatFullCurrency(personNet, currencySymbol, true)}
-                                                className={clsx(
-                                                    "text-[16px] sm:text-[17px] font-normal tabular-nums whitespace-nowrap privacy-mask",
-                                                    isPrivacyMode && "privacy-blur",
-                                                    isAllSettled
-                                                        ? "text-slate-500 dark:text-[#C4C7C5]"
-                                                        : isOwed
-                                                        ? "text-emerald-600 dark:text-[#6DD58C]"
-                                                        : "text-rose-600 dark:text-[#F2B8B5]"
-                                                )}
-                                            >
-                                                {isAllSettled
-                                                    ? "Settled"
-                                                    : isOwed
-                                                    ? `+ ${currencySymbol}${formatCompactCurrency(Math.abs(personNet), currencySymbol, 1000).replace(currencySymbol, '')}`
-                                                    : `- ${currencySymbol}${formatCompactCurrency(Math.abs(personNet), currencySymbol, 1000).replace(currencySymbol, '')}`
-                                                }
-                                            </p>
-                                            <span className={clsx(
-                                                "material-symbols-outlined text-[20px] text-slate-400 dark:text-[#C4C7C5] transition-transform duration-200",
-                                                isExpanded && "rotate-180"
-                                            )}>
-                                                expand_more
-                                            </span>
-                                        </div>
-                                    </div>
+                                    {/* Person Row with Slide-to-Action */}
+                                    <SwipeableDebtGroupItem
+                                        group={group}
+                                        isExpanded={isExpanded}
+                                        isSwiped={swipedPerson === group.personName}
+                                        isPrivacyMode={isPrivacyMode}
+                                        currencySymbol={currencySymbol}
+                                        onToggleExpand={() => toggleExpand(group.personName)}
+                                        onSwipe={(personName) => {
+                                            setSwipedPerson(personName);
+                                            setSwipedDebtId(null);
+                                        }}
+                                        onReset={() => setSwipedPerson(null)}
+                                        onResetOthers={() => {
+                                            if (swipedPerson && swipedPerson !== group.personName) {
+                                                setSwipedPerson(null);
+                                            }
+                                            if (swipedDebtId) {
+                                                setSwipedDebtId(null);
+                                            }
+                                        }}
+                                        onAdd={() => {
+                                            setAddModalInitialPersonName(group.personName);
+                                            setAddModalInitialType("lent");
+                                            setAddModalInitialPurpose("");
+                                            setIsAddModalOpen(true);
+                                        }}
+                                        onEdit={(id) => openEditModal(id)}
+                                        onDelete={() => {
+                                            if (group.items.length === 1) {
+                                                setDeleteConfirmDebt(group.items[0]);
+                                            } else {
+                                                setDeleteConfirmGroup({
+                                                    personName: group.personName,
+                                                    count: group.items.length,
+                                                });
+                                            }
+                                        }}
+                                    />
 
                                     {/* Expanded History Drawer */}
                                     <div
@@ -1397,7 +1784,37 @@ export default function DebtsPage() {
                                                                         <div key={section.key} className="space-y-1">
                                                                             <h5 className="px-1.5 text-[11.5px] font-normal text-slate-400 dark:text-zinc-500">{section.label}</h5>
                                                                             <div className="space-y-1">
-                                                                                {section.items.map(renderDebtItem)}
+                                                                                {section.items.map((debt) => (
+                                                                                    <SwipeableDebtItem
+                                                                                        key={debt.id}
+                                                                                        debt={debt}
+                                                                                        paid={debtPaymentsMap[debt.id]?.totalPaid || 0}
+                                                                                        isSwiped={swipedDebtId === debt.id}
+                                                                                        isPrivacyMode={isPrivacyMode}
+                                                                                        currencySymbol={currencySymbol}
+                                                                                        onSwipe={(id) => {
+                                                                                            setSwipedDebtId(id);
+                                                                                            setSwipedPerson(null);
+                                                                                        }}
+                                                                                        onReset={() => setSwipedDebtId(null)}
+                                                                                        onResetOthers={() => {
+                                                                                            if (swipedDebtId && swipedDebtId !== debt.id) {
+                                                                                                setSwipedDebtId(null);
+                                                                                            }
+                                                                                            if (swipedPerson) {
+                                                                                                setSwipedPerson(null);
+                                                                                            }
+                                                                                        }}
+                                                                                        onEdit={(id) => openEditModal(id)}
+                                                                                        onDelete={(item) => setDeleteConfirmDebt(item)}
+                                                                                        onPayment={(item, remaining) => {
+                                                                                            setPaymentModalDebt(item);
+                                                                                            setPaymentAmount(remaining.toString());
+                                                                                            setPaymentNote("");
+                                                                                        }}
+                                                                                        onToggleStatus={(item) => handleToggleStatus(item)}
+                                                                                        />
+                                                                                ))}
                                                                             </div>
                                                                         </div>
                                                                     ))}
@@ -1425,7 +1842,37 @@ export default function DebtsPage() {
                                                                                 <div key={section.key} className="space-y-1">
                                                                                     <h5 className="px-1.5 text-[11.5px] font-normal text-slate-400 dark:text-zinc-500">{section.label}</h5>
                                                                                     <div className="space-y-1">
-                                                                                        {section.items.map(renderDebtItem)}
+                                                                                        {section.items.map((debt) => (
+                                                                                            <SwipeableDebtItem
+                                                                                                key={debt.id}
+                                                                                                debt={debt}
+                                                                                                paid={debtPaymentsMap[debt.id]?.totalPaid || 0}
+                                                                                                isSwiped={swipedDebtId === debt.id}
+                                                                                                isPrivacyMode={isPrivacyMode}
+                                                                                                currencySymbol={currencySymbol}
+                                                                                                onSwipe={(id) => {
+                                                                                                    setSwipedDebtId(id);
+                                                                                                    setSwipedPerson(null);
+                                                                                                }}
+                                                                                                onReset={() => setSwipedDebtId(null)}
+                                                                                                onResetOthers={() => {
+                                                                                                    if (swipedDebtId && swipedDebtId !== debt.id) {
+                                                                                                        setSwipedDebtId(null);
+                                                                                                    }
+                                                                                                    if (swipedPerson) {
+                                                                                                        setSwipedPerson(null);
+                                                                                                    }
+                                                                                                }}
+                                                                                                onEdit={(id) => openEditModal(id)}
+                                                                                                onDelete={(item) => setDeleteConfirmDebt(item)}
+                                                                                                onPayment={(item, remaining) => {
+                                                                                                    setPaymentModalDebt(item);
+                                                                                                    setPaymentAmount(remaining.toString());
+                                                                                                    setPaymentNote("");
+                                                                                                }}
+                                                                                                onToggleStatus={(item) => handleToggleStatus(item)}
+                                                                                                />
+                                                                                        ))}
                                                                                     </div>
                                                                                 </div>
                                                                             ))}
@@ -1455,15 +1902,63 @@ export default function DebtsPage() {
                 initialPersonName={addModalInitialPersonName}
             />
 
-            <ActionModal
-                isOpen={isDeleteModalOpen}
-                onClose={() => setIsDeleteModalOpen(false)}
-                title="Delete Debt?"
-                description="Are you sure you want to delete this debt? This action cannot be undone."
-                confirmLabel="Delete"
-                confirmVariant="danger"
-                onConfirm={confirmDelete}
-            />
+            {/* iOS-Style Delete Confirmation Dialog */}
+            <AnimatePresence>
+                {(deleteConfirmDebt || deleteConfirmGroup) && mounted && createPortal(
+                    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => {
+                                setDeleteConfirmDebt(null);
+                                setDeleteConfirmGroup(null);
+                            }}
+                            className="fixed inset-0 bg-black/60 backdrop-blur-xs cursor-pointer"
+                        />
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0, y: 16 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.9, opacity: 0, y: 16 }}
+                            transition={{ type: "spring", stiffness: 450, damping: 30 }}
+                            className="relative z-10 bg-white dark:bg-[#1E2020] rounded-[28px] p-6 max-w-xs w-full shadow-2xl border border-slate-200/80 dark:border-white/10 text-center"
+                        >
+                            <div className="w-12 h-12 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto mb-3">
+                                <span className="material-symbols-outlined text-[26px]">delete</span>
+                            </div>
+                            <h3 className="text-[17px] font-bold text-slate-900 dark:text-white mb-1">
+                                {deleteConfirmDebt ? "Delete Debt?" : `Delete Debts for ${deleteConfirmGroup?.personName}?`}
+                            </h3>
+                            <p className="text-[13px] text-slate-500 dark:text-zinc-400 mb-5 leading-normal">
+                                {deleteConfirmDebt
+                                    ? `Are you sure you want to remove this ${currencySymbol}${Number.isInteger(deleteConfirmDebt.amount) ? deleteConfirmDebt.amount.toLocaleString() : deleteConfirmDebt.amount.toFixed(2)} entry for ${deleteConfirmDebt.person_name}?`
+                                    : `Are you sure you want to delete all ${deleteConfirmGroup?.count} debt ${deleteConfirmGroup?.count === 1 ? 'record' : 'records'} for ${deleteConfirmGroup?.personName}? This cannot be undone.`
+                                }
+                            </p>
+                            <div className="flex items-center gap-2.5">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setDeleteConfirmDebt(null);
+                                        setDeleteConfirmGroup(null);
+                                    }}
+                                    className="flex-1 py-2.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-zinc-200 font-semibold text-sm active:scale-95 transition-all cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={deleteConfirmDebt ? confirmDeleteSingleDebt : confirmDeleteGroup}
+                                    className="flex-1 py-2.5 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-semibold text-sm active:scale-95 transition-all shadow-md cursor-pointer"
+                                >
+                                    Delete
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>,
+                    document.body
+                )}
+            </AnimatePresence>
 
             {/* Record Repayment Modal */}
             <ActionModal

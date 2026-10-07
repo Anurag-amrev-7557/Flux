@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, FormEvent, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDatabase } from "@/db/DatabaseProvider";
 import { useAppStore } from "@/store/appStore";
@@ -38,6 +39,8 @@ export default function AddDebtModal({ isOpen, onClose, debtId, initialType, ini
     const [profiles, setProfiles] = useState<ProfileDocType[]>([]);
     const [existingDebts, setExistingDebts] = useState<DebtDocType[]>([]);
     const [isReady, setIsReady] = useState(false);
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => { setMounted(true); }, []);
     useEffect(() => { if (!isOpen) setIsReady(false); }, [isOpen]);
 
     // Prediction states
@@ -222,7 +225,7 @@ export default function AddDebtModal({ isOpen, onClose, debtId, initialType, ini
         }
     };
 
-    return (
+    const modalContent = (
         <AnimatePresence>
             {isOpen && (
                 <>
@@ -511,4 +514,7 @@ export default function AddDebtModal({ isOpen, onClose, debtId, initialType, ini
             )}
         </AnimatePresence>
     );
+
+    if (!mounted) return null;
+    return createPortal(modalContent, document.body);
 }
