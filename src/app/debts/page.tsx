@@ -490,8 +490,50 @@ function SwipeableDebtItem({
     return (
         <div
             data-swipe-debt={debt.id}
-            className="relative overflow-hidden rounded-xl my-0.5 group bg-slate-100/50 dark:bg-white/[0.02]"
+            className="relative overflow-hidden rounded-xl my-0.5 group bg-slate-200/50 dark:bg-white/[0.03]"
         >
+            {/* Background Action Buttons - outside drag hierarchy for 100% reliable tap/click handling */}
+            <div className="absolute right-0 top-0 bottom-0 w-[104px] flex items-center justify-center gap-2 pr-3 z-0 select-none">
+                <motion.button
+                    type="button"
+                    style={{
+                        opacity: editOpacity,
+                        scale: editScale,
+                    }}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        triggerHaptic('light');
+                        onEdit(debt.id);
+                        onReset();
+                    }}
+                    className="w-[38px] h-[38px] rounded-full bg-slate-200/90 hover:bg-slate-300 active:scale-90 text-slate-700 dark:bg-white/[0.12] dark:hover:bg-white/[0.18] dark:text-zinc-200 border border-slate-300/50 dark:border-white/10 flex items-center justify-center shadow-2xs cursor-pointer transition-transform"
+                    title="Edit"
+                    aria-label="Edit debt"
+                >
+                    <span className="material-symbols-outlined text-[18px]">edit</span>
+                </motion.button>
+
+                <motion.button
+                    type="button"
+                    style={{
+                        opacity: deleteOpacity,
+                        scale: deleteScale,
+                    }}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        triggerHaptic('medium');
+                        onDelete(debt);
+                        onReset();
+                    }}
+                    className="w-[38px] h-[38px] rounded-full bg-rose-500/15 hover:bg-rose-500/25 active:scale-90 text-rose-600 dark:bg-rose-500/[0.18] dark:hover:bg-rose-500/[0.28] dark:text-rose-400 border border-rose-500/25 flex items-center justify-center shadow-2xs cursor-pointer transition-transform"
+                    title="Delete"
+                    aria-label="Delete debt"
+                >
+                    <span className="material-symbols-outlined text-[18px]">delete</span>
+                </motion.button>
+            </div>
+
+            {/* Foreground Draggable Card */}
             <motion.div
                 drag="x"
                 dragDirectionLock
@@ -512,10 +554,10 @@ function SwipeableDebtItem({
                         onEdit(debt.id);
                     }
                 }}
-                className="flex items-center w-full touch-pan-y select-none cursor-pointer"
+                className="relative z-10 flex items-center w-full touch-pan-y select-none cursor-pointer"
             >
-                {/* 1. Debt Entry Content (100% width shrink-0) */}
-                <div className="w-full shrink-0 bg-slate-50 dark:bg-[#141414] hover:bg-slate-100/70 dark:hover:bg-white/[0.04] active:bg-slate-200/50 dark:active:bg-white/[0.08] flex flex-col py-2.5 px-2 rounded-xl transition-colors">
+                {/* 1. Debt Entry Content */}
+                <div className="w-full bg-slate-50 dark:bg-[#141414] hover:bg-slate-100/70 dark:hover:bg-white/[0.04] active:bg-slate-200/50 dark:active:bg-white/[0.08] flex flex-col py-2.5 px-2 rounded-xl transition-colors">
                     <div className="flex items-center gap-3.5 w-full">
                         {/* Circular Avatar */}
                         <div className={clsx(
@@ -634,51 +676,6 @@ function SwipeableDebtItem({
                         </div>
                     )}
                 </div>
-
-                {/* 2. Slide-to-Action Buttons */}
-                <div className="w-[104px] shrink-0 flex items-center justify-center gap-2 pl-2 pr-3 select-none">
-                    <motion.button
-                        type="button"
-                        style={{
-                            opacity: editOpacity,
-                            scale: editScale,
-                        }}
-                        whileTap={{ scale: 0.92 }}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            triggerHaptic('light');
-                            onEdit(debt.id);
-                            onReset();
-                        }}
-                        className="w-[38px] h-[38px] rounded-full bg-slate-200/80 hover:bg-slate-300/80 active:bg-slate-300 text-slate-700 dark:bg-white/[0.08] dark:hover:bg-white/[0.14] dark:active:bg-white/[0.18] dark:text-zinc-200 border border-slate-300/50 dark:border-white/10 flex items-center justify-center shadow-2xs cursor-pointer transition-colors"
-                        title="Edit"
-                        aria-label="Edit debt"
-                    >
-                        <span className="material-symbols-outlined text-[18px]">edit</span>
-                    </motion.button>
-
-                    <motion.button
-                        type="button"
-                        style={{
-                            opacity: deleteOpacity,
-                            scale: deleteScale,
-                        }}
-                        whileTap={{ scale: 0.92 }}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            triggerHaptic('medium');
-                            onDelete(debt);
-                            onReset();
-                        }}
-                        className="w-[38px] h-[38px] rounded-full bg-rose-500/10 hover:bg-rose-500/18 active:bg-rose-500/25 text-rose-600 dark:bg-rose-500/[0.12] dark:hover:bg-rose-500/[0.22] dark:active:bg-rose-500/[0.28] dark:text-rose-400 border border-rose-500/20 flex items-center justify-center shadow-2xs cursor-pointer transition-colors"
-                        title="Delete"
-                        aria-label="Delete debt"
-                    >
-                        <span className="material-symbols-outlined text-[18px]">delete</span>
-                    </motion.button>
-                </div>
             </motion.div>
         </div>
     );
@@ -779,8 +776,56 @@ function SwipeableDebtGroupItem({
     return (
         <div
             data-swipe-person={group.personName}
-            className="relative overflow-hidden rounded-xl my-0.5 group bg-slate-100/50 dark:bg-white/[0.02]"
+            className="relative overflow-hidden rounded-xl my-0.5 group bg-slate-200/50 dark:bg-white/[0.03]"
         >
+            {/* Background Action Buttons - outside drag hierarchy for 100% reliable tap/click handling */}
+            <div className="absolute right-0 top-0 bottom-0 w-[104px] flex items-center justify-center gap-2 pr-3 z-0 select-none">
+                <motion.button
+                    type="button"
+                    style={{
+                        opacity: editOpacity,
+                        scale: editScale,
+                    }}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        triggerHaptic('light');
+                        if (group.items.length === 1) {
+                            onEdit(group.items[0].id);
+                        } else {
+                            onAdd();
+                        }
+                        onReset();
+                    }}
+                    className="w-[38px] h-[38px] rounded-full bg-slate-200/90 hover:bg-slate-300 active:scale-90 text-slate-700 dark:bg-white/[0.12] dark:hover:bg-white/[0.18] dark:text-zinc-200 border border-slate-300/50 dark:border-white/10 flex items-center justify-center shadow-2xs cursor-pointer transition-transform"
+                    title={group.items.length === 1 ? "Edit debt" : "Add debt"}
+                    aria-label={group.items.length === 1 ? "Edit debt" : "Add debt"}
+                >
+                    <span className="material-symbols-outlined text-[18px]">
+                        {group.items.length === 1 ? 'edit' : 'add'}
+                    </span>
+                </motion.button>
+
+                <motion.button
+                    type="button"
+                    style={{
+                        opacity: deleteOpacity,
+                        scale: deleteScale,
+                    }}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        triggerHaptic('medium');
+                        onDelete();
+                        onReset();
+                    }}
+                    className="w-[38px] h-[38px] rounded-full bg-rose-500/15 hover:bg-rose-500/25 active:scale-90 text-rose-600 dark:bg-rose-500/[0.18] dark:hover:bg-rose-500/[0.28] dark:text-rose-400 border border-rose-500/25 flex items-center justify-center shadow-2xs cursor-pointer transition-transform"
+                    title="Delete"
+                    aria-label="Delete debts"
+                >
+                    <span className="material-symbols-outlined text-[18px]">delete</span>
+                </motion.button>
+            </div>
+
+            {/* Foreground Draggable Card */}
             <motion.div
                 drag="x"
                 dragDirectionLock
@@ -801,10 +846,10 @@ function SwipeableDebtGroupItem({
                         onToggleExpand();
                     }
                 }}
-                className="flex items-center w-full touch-pan-y select-none cursor-pointer"
+                className="relative z-10 flex items-center w-full touch-pan-y select-none cursor-pointer"
             >
-                {/* 1. Person Row (100% width shrink-0) */}
-                <div className="w-full shrink-0 bg-slate-50 dark:bg-[#141414] flex items-center gap-4 py-3 px-1.5 hover:bg-slate-100/70 dark:hover:bg-white/[0.04] active:bg-slate-200/50 dark:active:bg-white/[0.08] transition-colors rounded-xl">
+                {/* 1. Person Row */}
+                <div className="w-full bg-slate-50 dark:bg-[#141414] flex items-center gap-4 py-3 px-1.5 hover:bg-slate-100/70 dark:hover:bg-white/[0.04] active:bg-slate-200/50 dark:active:bg-white/[0.08] transition-colors rounded-xl">
                     {/* Avatar */}
                     <div
                         className="w-11 h-11 rounded-full flex items-center justify-center shrink-0 transition-transform group-hover:scale-105"
@@ -857,57 +902,6 @@ function SwipeableDebtGroupItem({
                         </span>
                     </div>
                 </div>
-
-                {/* 2. Slide-to-Action Buttons */}
-                <div className="w-[104px] shrink-0 flex items-center justify-center gap-2 pl-2 pr-3 select-none">
-                    <motion.button
-                        type="button"
-                        style={{
-                            opacity: editOpacity,
-                            scale: editScale,
-                        }}
-                        whileTap={{ scale: 0.92 }}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            triggerHaptic('light');
-                            if (group.items.length === 1) {
-                                onEdit(group.items[0].id);
-                            } else {
-                                onAdd();
-                            }
-                            onReset();
-                        }}
-                        className="w-[38px] h-[38px] rounded-full bg-slate-200/80 hover:bg-slate-300/80 active:bg-slate-300 text-slate-700 dark:bg-white/[0.08] dark:hover:bg-white/[0.14] dark:active:bg-white/[0.18] dark:text-zinc-200 border border-slate-300/50 dark:border-white/10 flex items-center justify-center shadow-2xs cursor-pointer transition-colors"
-                        title={group.items.length === 1 ? "Edit debt" : "Add debt"}
-                        aria-label={group.items.length === 1 ? "Edit debt" : "Add debt"}
-                    >
-                        <span className="material-symbols-outlined text-[18px]">
-                            {group.items.length === 1 ? 'edit' : 'add'}
-                        </span>
-                    </motion.button>
-
-                    <motion.button
-                        type="button"
-                        style={{
-                            opacity: deleteOpacity,
-                            scale: deleteScale,
-                        }}
-                        whileTap={{ scale: 0.92 }}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            triggerHaptic('medium');
-                            onDelete();
-                            onReset();
-                        }}
-                        className="w-[38px] h-[38px] rounded-full bg-rose-500/10 hover:bg-rose-500/18 active:bg-rose-500/25 text-rose-600 dark:bg-rose-500/[0.12] dark:hover:bg-rose-500/[0.22] dark:active:bg-rose-500/[0.28] dark:text-rose-400 border border-rose-500/20 flex items-center justify-center shadow-2xs cursor-pointer transition-colors"
-                        title="Delete"
-                        aria-label="Delete debts"
-                    >
-                        <span className="material-symbols-outlined text-[18px]">delete</span>
-                    </motion.button>
-                </div>
             </motion.div>
         </div>
     );
@@ -953,8 +947,8 @@ export default function DebtsPage() {
         const handleOutsidePointerDown = (e: PointerEvent) => {
             const target = e.target as HTMLElement | null;
             if (
-                (swipedDebtId && target?.closest(`[data-swipe-debt="${swipedDebtId}"]`)) ||
-                (swipedPerson && target?.closest(`[data-swipe-person="${swipedPerson}"]`))
+                (swipedDebtId && target?.closest('[data-swipe-debt]')?.getAttribute('data-swipe-debt') === swipedDebtId) ||
+                (swipedPerson && target?.closest('[data-swipe-person]')?.getAttribute('data-swipe-person') === swipedPerson)
             ) {
                 return;
             }
@@ -1156,14 +1150,21 @@ export default function DebtsPage() {
         if (!deleteConfirmDebt) return;
         try {
             triggerHaptic('medium');
+            const debtToDelete = deleteConfirmDebt;
             const relatedPayments = await db.debt_payments.find({
-                selector: { debt_id: deleteConfirmDebt.id, _deleted: false }
+                selector: { debt_id: debtToDelete.id, _deleted: false }
             }).exec();
             await Promise.all(relatedPayments.map(p => softDelete(db.debt_payments, p.id)));
-            await softDelete(db.debts, deleteConfirmDebt.id);
+            await softDelete(db.debts, debtToDelete.id);
             showToast("Debt record deleted", "info");
             setDeleteConfirmDebt(null);
             setSwipedDebtId(null);
+            const remainingForPerson = debts.filter(
+                d => d.person_name.trim().toLowerCase() === debtToDelete.person_name.trim().toLowerCase() && d.id !== debtToDelete.id
+            );
+            if (remainingForPerson.length === 0 && expandedPerson?.trim().toLowerCase() === debtToDelete.person_name.trim().toLowerCase()) {
+                setExpandedPerson(null);
+            }
         } catch (error) {
             console.error("Failed to delete debt", error);
             showToast("Failed to delete debt", "error");
@@ -1186,7 +1187,7 @@ export default function DebtsPage() {
             showToast(`Deleted all records for ${deleteConfirmGroup.personName}`, "info");
             setDeleteConfirmGroup(null);
             setSwipedPerson(null);
-            if (expandedPerson === deleteConfirmGroup.personName) {
+            if (expandedPerson?.trim().toLowerCase() === personKey) {
                 setExpandedPerson(null);
             }
         } catch (error) {
@@ -1210,65 +1211,6 @@ export default function DebtsPage() {
 
     const toggleExpand = (personName: string) => {
         setExpandedPerson(expandedPerson === personName ? null : personName);
-    };
-
-    const handleSimplifyDebt = async (group: { personName: string; totalLent: number; totalOwe: number; items: DebtDocType[] }) => {
-        try {
-            const offsetAmount = Math.min(group.totalLent, group.totalOwe);
-            if (offsetAmount <= 0) return;
-
-            triggerHaptic('success');
-            const now = Date.now();
-
-            // 1. Offset owe debts
-            let remainingOweOffset = offsetAmount;
-            const activeOwe = group.items.filter(d => d.status === 'active' && d.type === 'owe');
-            for (const debt of activeOwe) {
-                if (remainingOweOffset <= 0) break;
-                const paid = debtPaymentsMap[debt.id]?.totalPaid || 0;
-                const remaining = Math.max(0, debt.amount - paid);
-                const toApply = Math.min(remainingOweOffset, remaining);
-                if (toApply > 0) {
-                    await mutate(db.debt_payments, uuidv4(), {
-                        debt_id: debt.id,
-                        amount: toApply,
-                        paid_at: now,
-                        note: `Mutual debt offset with ${group.personName}`,
-                    });
-                    remainingOweOffset -= toApply;
-                    if (Math.abs(remaining - toApply) < 0.01) {
-                        await mutate(db.debts, debt.id, { status: 'settled' });
-                    }
-                }
-            }
-
-            // 2. Offset lent debts
-            let remainingLentOffset = offsetAmount;
-            const activeLent = group.items.filter(d => d.status === 'active' && d.type === 'lent');
-            for (const debt of activeLent) {
-                if (remainingLentOffset <= 0) break;
-                const paid = debtPaymentsMap[debt.id]?.totalPaid || 0;
-                const remaining = Math.max(0, debt.amount - paid);
-                const toApply = Math.min(remainingLentOffset, remaining);
-                if (toApply > 0) {
-                    await mutate(db.debt_payments, uuidv4(), {
-                        debt_id: debt.id,
-                        amount: toApply,
-                        paid_at: now,
-                        note: `Mutual debt offset with ${group.personName}`,
-                    });
-                    remainingLentOffset -= toApply;
-                    if (Math.abs(remaining - toApply) < 0.01) {
-                        await mutate(db.debts, debt.id, { status: 'settled' });
-                    }
-                }
-            }
-
-            showToast(`Simplified: ${currencySymbol}${offsetAmount.toFixed(2)} offset for ${group.personName}`, 'success');
-        } catch (e) {
-            console.error("Failed to simplify debts", e);
-            showToast("Failed to simplify debts", "error");
-        }
     };
 
     const toggleSettledHistory = (personName: string) => {
@@ -1734,37 +1676,6 @@ export default function DebtsPage() {
                                                     </button>
                                                 </div>
 
-                                                {/* Circular Debt Simplification Banner */}
-                                                {group.totalLent > 0 && group.totalOwe > 0 && (
-                                                    <div className="px-3 py-2 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-between gap-3">
-                                                        <div className="flex items-center gap-2.5 min-w-0">
-                                                            <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                                                                <span className="material-symbols-outlined text-[18px]">swap_horiz</span>
-                                                            </div>
-                                                            <div className="truncate">
-                                                                <span className={clsx("text-[13px] font-medium text-slate-900 dark:text-[#E3E3E3] block truncate privacy-mask", isPrivacyMode && "privacy-blur")}>
-                                                                    Mutual Debts: Offset {currencySymbol}{Math.min(group.totalLent, group.totalOwe).toFixed(2)}
-                                                                </span>
-                                                                <span className={clsx("text-[11.5px] text-slate-500 dark:text-[#C4C7C5] block truncate privacy-mask", isPrivacyMode && "privacy-blur")}>
-                                                                    {personNet > 0
-                                                                        ? `${group.personName} pays you ${currencySymbol}${personNet.toFixed(2)} net`
-                                                                        : `You pay ${group.personName} ${currencySymbol}${Math.abs(personNet).toFixed(2)} net`
-                                                                    }
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleSimplifyDebt(group);
-                                                            }}
-                                                            className="px-3 py-1 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-medium text-[11.5px] active:scale-95 transition-all shadow-xs shrink-0 cursor-pointer"
-                                                        >
-                                                            Simplify
-                                                        </button>
-                                                    </div>
-                                                )}
-
                                                 {/* Active and Settled Records */}
                                                 {(() => {
                                                     const activeSections = getDebtDateSections(group.items.filter((debt) => debt.status === 'active'));
@@ -1905,7 +1816,7 @@ export default function DebtsPage() {
             {/* iOS-Style Delete Confirmation Dialog */}
             <AnimatePresence>
                 {(deleteConfirmDebt || deleteConfirmGroup) && mounted && createPortal(
-                    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+                    <div key="delete-debt-dialog" className="fixed inset-0 z-[120] flex items-center justify-center p-4">
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
@@ -1948,7 +1859,13 @@ export default function DebtsPage() {
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={deleteConfirmDebt ? confirmDeleteSingleDebt : confirmDeleteGroup}
+                                    onClick={() => {
+                                        if (deleteConfirmDebt) {
+                                            confirmDeleteSingleDebt();
+                                        } else if (deleteConfirmGroup) {
+                                            confirmDeleteGroup();
+                                        }
+                                    }}
                                     className="flex-1 py-2.5 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-semibold text-sm active:scale-95 transition-all shadow-md cursor-pointer"
                                 >
                                     Delete
